@@ -190,6 +190,7 @@ function render() {
   ) {
     highlight = {
       pieceDefIdx: currentPieces[selectedPieceIdx],
+      playerNumber: currentTurn,
       row: hoverCell.row,
       col: hoverCell.col,
     };
@@ -200,6 +201,7 @@ function render() {
     pieceCtx,
     currentPieces,
     selectedPieceIdx,
+    currentTurn,
     CELL_SIZE,
     pieceCanvas.width,
     pieceCanvas.height

@@ -2,24 +2,67 @@ const BOARD_SIZE = 10;
 const CELL_SIZE = 48;
 
 const PIECE_DEFS = [
-  { cells: [[0, 0]], color: "#ff6b6b" },
-  { cells: [[0, 0], [0, 1]], color: "#4ecdc4" },
-  { cells: [[0, 0], [1, 0]], color: "#45b7d1" },
-  { cells: [[0, 0], [0, 1], [0, 2]], color: "#96ceb4" },
-  { cells: [[0, 0], [1, 0], [2, 0]], color: "#88d8b0" },
-  { cells: [[0, 0], [1, 0], [1, 1]], color: "#ffe66d" },
-  { cells: [[0, 0], [0, 1], [1, 0]], color: "#ffd93d" },
-  { cells: [[0, 0], [0, 1], [1, 1]], color: "#f6e58d" },
-  { cells: [[0, 1], [1, 0], [1, 1]], color: "#ffbe76" },
-  { cells: [[0, 0], [0, 1], [0, 2], [0, 3]], color: "#0984e3" },
-  { cells: [[0, 0], [1, 0], [2, 0], [3, 0]], color: "#6c5ce7" },
-  { cells: [[0, 0], [0, 1], [1, 0], [1, 1]], color: "#e17055" },
-  { cells: [[0, 1], [1, 0], [1, 1], [1, 2]], color: "#fd79a8" },
-  { cells: [[0, 1], [0, 2], [1, 0], [1, 1]], color: "#00b894" },
-  { cells: [[0, 0], [0, 1], [1, 1], [1, 2]], color: "#55efc4" },
-  { cells: [[0, 0], [1, 0], [2, 0], [2, 1]], color: "#fdcb6e" },
-  { cells: [[0, 0], [0, 1], [1, 0], [2, 0]], color: "#ffeaa7" },
-  { cells: [[0, 1], [1, 0], [1, 1], [1, 2], [2, 1]], color: "#dfe6e9" },
+  { cells: [[0, 0]] },
+  { cells: [[0, 0], [0, 1]] },
+  { cells: [[0, 0], [1, 0]] },
+  { cells: [[0, 0], [0, 1], [0, 2]] },
+  { cells: [[0, 0], [1, 0], [2, 0]] },
+  { cells: [[0, 0], [1, 0], [1, 1]] },
+  { cells: [[0, 0], [0, 1], [1, 0]] },
+  { cells: [[0, 0], [0, 1], [1, 1]] },
+  { cells: [[0, 1], [1, 0], [1, 1]] },
+  { cells: [[0, 0], [0, 1], [0, 2], [0, 3]] },
+  { cells: [[0, 0], [1, 0], [2, 0], [3, 0]] },
+  { cells: [[0, 0], [0, 1], [1, 0], [1, 1]] },
+  { cells: [[0, 1], [1, 0], [1, 1], [1, 2]] },
+  { cells: [[0, 1], [0, 2], [1, 0], [1, 1]] },
+  { cells: [[0, 0], [0, 1], [1, 1], [1, 2]] },
+  { cells: [[0, 0], [1, 0], [2, 0], [2, 1]] },
+  { cells: [[0, 0], [0, 1], [1, 0], [2, 0]] },
+  { cells: [[0, 1], [1, 0], [1, 1], [1, 2], [2, 1]] },
+];
+
+const PLAYER_PALETTES = [
+  [
+    "#ffcad4",
+    "#bae1ff",
+    "#c7ceea",
+    "#caffbf",
+    "#b5ead7",
+    "#fff1b6",
+    "#ffd6a5",
+    "#fdffb6",
+    "#ffc6ff",
+    "#a0e7e5",
+    "#bdb2ff",
+    "#ffdac1",
+    "#f1c0e8",
+    "#b8f2e6",
+    "#e4c1f9",
+    "#f9dcc4",
+    "#faedcb",
+    "#dde7c7",
+  ],
+  [
+    "#d7263d",
+    "#1b998b",
+    "#2d6a8d",
+    "#386641",
+    "#2a9d8f",
+    "#bc6c25",
+    "#b56576",
+    "#6d597a",
+    "#9c6644",
+    "#264653",
+    "#3d348b",
+    "#7f5539",
+    "#8f2d56",
+    "#0f766e",
+    "#4a5759",
+    "#7c6a0a",
+    "#5f0f40",
+    "#334e68",
+  ],
 ];
 
 function createEmptyBoard() {
@@ -37,11 +80,25 @@ function canPlacePiece(board, pieceDefIdx, row, col) {
   return true;
 }
 
-function placePieceOnBoard(board, pieceDefIdx, row, col) {
+function getPieceColor(pieceDefIdx, playerNumber) {
+  const palette = PLAYER_PALETTES[playerNumber] || PLAYER_PALETTES[0];
+  return palette[pieceDefIdx % palette.length];
+}
+
+function hexToRgba(hex, alpha) {
+  const normalized = hex.replace("#", "");
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function placePieceOnBoard(board, pieceDefIdx, row, col, playerNumber) {
   const piece = PIECE_DEFS[pieceDefIdx];
+  const color = getPieceColor(pieceDefIdx, playerNumber);
   const newBoard = board.map(r => [...r]);
   for (const [dr, dc] of piece.cells) {
-    newBoard[row + dr][col + dc] = piece.color;
+    newBoard[row + dr][col + dc] = color;
   }
   return newBoard;
 }
@@ -119,20 +176,21 @@ function drawBoard(ctx, board, highlightCells, cellSize, canvasSize) {
   if (highlightCells) {
     const piece = PIECE_DEFS[highlightCells.pieceDefIdx];
     const valid = canPlacePiece(board, highlightCells.pieceDefIdx, highlightCells.row, highlightCells.col);
+    const previewColor = getPieceColor(highlightCells.pieceDefIdx, highlightCells.playerNumber);
     for (const [dr, dc] of piece.cells) {
       const r = highlightCells.row + dr;
       const c = highlightCells.col + dc;
       if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
         const x = c * cellSize;
         const y = r * cellSize;
-        ctx.fillStyle = valid ? "rgba(255,255,255,0.4)" : "rgba(255,0,0,0.3)";
+        ctx.fillStyle = valid ? hexToRgba(previewColor, 0.45) : "rgba(255,0,0,0.3)";
         ctx.fillRect(x, y, cellSize, cellSize);
       }
     }
   }
 }
 
-function drawPieceSelector(ctx, pieces, selectedIdx, cellSize, canvasWidth, canvasHeight) {
+function drawPieceSelector(ctx, pieces, selectedIdx, currentPlayerNumber, cellSize, canvasWidth, canvasHeight) {
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
   ctx.fillStyle = "#111";
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
@@ -172,7 +230,7 @@ function drawPieceSelector(ctx, pieces, selectedIdx, cellSize, canvasWidth, canv
     for (const [dr, dc] of piece.cells) {
       const x = offsetX + dc * pieceCellSize;
       const y = offsetY + dr * pieceCellSize;
-      ctx.fillStyle = piece.color;
+      ctx.fillStyle = getPieceColor(pieces[i], currentPlayerNumber);
       ctx.fillRect(x, y, pieceCellSize, pieceCellSize);
       ctx.strokeStyle = "rgba(0,0,0,0.3)";
       ctx.lineWidth = 1;

@@ -80,7 +80,7 @@ io.on("connection", (socket) => {
     if (!room.currentPieces.includes(pieceDefIdx)) return;
     if (!canPlacePiece(room.board, pieceDefIdx, row, col)) return;
 
-    placePieceOnBoard(room.board, pieceDefIdx, row, col);
+    placePieceOnBoard(room.board, pieceDefIdx, row, col, playerNumber);
     const linesCleared = clearLines(room.board);
     room.score += linesCleared;
     room.consecutiveSkips = 0;

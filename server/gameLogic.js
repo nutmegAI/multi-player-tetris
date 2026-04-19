@@ -1,22 +1,65 @@
 const PIECE_DEFS = [
-  { cells: [[0, 0]], color: "#ff6b6b" },
-  { cells: [[0, 0], [0, 1]], color: "#4ecdc4" },
-  { cells: [[0, 0], [1, 0]], color: "#45b7d1" },
-  { cells: [[0, 0], [0, 1], [0, 2]], color: "#96ceb4" },
-  { cells: [[0, 0], [1, 0], [2, 0]], color: "#88d8b0" },
-  { cells: [[0, 0], [1, 0], [1, 1]], color: "#ffe66d" },
-  { cells: [[0, 0], [0, 1], [1, 0]], color: "#ffd93d" },
-  { cells: [[0, 0], [0, 1], [1, 1]], color: "#f6e58d" },
-  { cells: [[0, 1], [1, 0], [1, 1]], color: "#ffbe76" },
-  { cells: [[0, 0], [0, 1], [0, 2], [0, 3]], color: "#0984e3" },
-  { cells: [[0, 0], [1, 0], [2, 0], [3, 0]], color: "#6c5ce7" },
-  { cells: [[0, 0], [0, 1], [1, 0], [1, 1]], color: "#e17055" },
-  { cells: [[0, 1], [1, 0], [1, 1], [1, 2]], color: "#fd79a8" },
-  { cells: [[0, 1], [0, 2], [1, 0], [1, 1]], color: "#00b894" },
-  { cells: [[0, 0], [0, 1], [1, 1], [1, 2]], color: "#55efc4" },
-  { cells: [[0, 0], [1, 0], [2, 0], [2, 1]], color: "#fdcb6e" },
-  { cells: [[0, 0], [0, 1], [1, 0], [2, 0]], color: "#ffeaa7" },
-  { cells: [[0, 1], [1, 0], [1, 1], [1, 2], [2, 1]], color: "#dfe6e9" },
+  { cells: [[0, 0]] },
+  { cells: [[0, 0], [0, 1]] },
+  { cells: [[0, 0], [1, 0]] },
+  { cells: [[0, 0], [0, 1], [0, 2]] },
+  { cells: [[0, 0], [1, 0], [2, 0]] },
+  { cells: [[0, 0], [1, 0], [1, 1]] },
+  { cells: [[0, 0], [0, 1], [1, 0]] },
+  { cells: [[0, 0], [0, 1], [1, 1]] },
+  { cells: [[0, 1], [1, 0], [1, 1]] },
+  { cells: [[0, 0], [0, 1], [0, 2], [0, 3]] },
+  { cells: [[0, 0], [1, 0], [2, 0], [3, 0]] },
+  { cells: [[0, 0], [0, 1], [1, 0], [1, 1]] },
+  { cells: [[0, 1], [1, 0], [1, 1], [1, 2]] },
+  { cells: [[0, 1], [0, 2], [1, 0], [1, 1]] },
+  { cells: [[0, 0], [0, 1], [1, 1], [1, 2]] },
+  { cells: [[0, 0], [1, 0], [2, 0], [2, 1]] },
+  { cells: [[0, 0], [0, 1], [1, 0], [2, 0]] },
+  { cells: [[0, 1], [1, 0], [1, 1], [1, 2], [2, 1]] },
+];
+
+const PLAYER_PALETTES = [
+  [
+    "#ffcad4",
+    "#bae1ff",
+    "#c7ceea",
+    "#caffbf",
+    "#b5ead7",
+    "#fff1b6",
+    "#ffd6a5",
+    "#fdffb6",
+    "#ffc6ff",
+    "#a0e7e5",
+    "#bdb2ff",
+    "#ffdac1",
+    "#f1c0e8",
+    "#b8f2e6",
+    "#e4c1f9",
+    "#f9dcc4",
+    "#faedcb",
+    "#dde7c7",
+  ],
+  [
+    "#d7263d",
+    "#1b998b",
+    "#2d6a8d",
+    "#386641",
+    "#2a9d8f",
+    "#bc6c25",
+    "#b56576",
+    "#6d597a",
+    "#9c6644",
+    "#264653",
+    "#3d348b",
+    "#7f5539",
+    "#8f2d56",
+    "#0f766e",
+    "#4a5759",
+    "#7c6a0a",
+    "#5f0f40",
+    "#334e68",
+  ],
 ];
 
 const BOARD_SIZE = 10;
@@ -44,10 +87,16 @@ function canPlacePiece(board, pieceDefIdx, row, col) {
   return true;
 }
 
-function placePieceOnBoard(board, pieceDefIdx, row, col) {
+function getPieceColor(pieceDefIdx, playerNumber) {
+  const palette = PLAYER_PALETTES[playerNumber] || PLAYER_PALETTES[0];
+  return palette[pieceDefIdx % palette.length];
+}
+
+function placePieceOnBoard(board, pieceDefIdx, row, col, playerNumber) {
   const piece = PIECE_DEFS[pieceDefIdx];
+  const color = getPieceColor(pieceDefIdx, playerNumber);
   for (const [dr, dc] of piece.cells) {
-    board[row + dr][col + dc] = piece.color;
+    board[row + dr][col + dc] = color;
   }
 }
 
@@ -95,6 +144,7 @@ module.exports = {
   createEmptyBoard,
   generatePieceSet,
   canPlacePiece,
+  getPieceColor,
   placePieceOnBoard,
   clearLines,
   canAnyPieceFit,
