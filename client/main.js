@@ -6,9 +6,12 @@ let socket = null;
 let currentRoomId = null;
 
 // DOM elements
+const newRoomBtn = document.getElementById("new-room-btn");
 const roomIdInput = document.getElementById("room-id-input");
 const joinBtn = document.getElementById("join-btn");
 const statusDisplay = document.getElementById("status");
+const shareLink = document.getElementById("share-link");
+const shareUrl = document.getElementById("share-url");
 const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
 
@@ -64,10 +67,20 @@ function init() {
 
   // --- UI event handlers ---
 
+  newRoomBtn.addEventListener("click", createNewRoom);
   joinBtn.addEventListener("click", joinRoom);
   roomIdInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") joinRoom();
   });
+
+  // Auto-join if room ID is in the URL hash
+  const hashRoom = window.location.hash.slice(1);
+  if (hashRoom) {
+    roomIdInput.value = hashRoom;
+    socket.on("connect", () => {
+      joinRoom();
+    });
+  }
 
   // Keyboard controls for game actions
   document.addEventListener("keydown", (e) => {
@@ -92,6 +105,25 @@ function init() {
   drawEmptyBoard();
 }
 
+function generateRoomId() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let id = "";
+  for (let i = 0; i < 6; i++) {
+    id += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return id;
+}
+
+function createNewRoom() {
+  const roomId = generateRoomId();
+  roomIdInput.value = roomId;
+  window.location.hash = roomId;
+  shareUrl.textContent = window.location.href;
+  shareUrl.href = window.location.href;
+  shareLink.style.display = "block";
+  socket.emit("join_room", roomId);
+}
+
 function joinRoom() {
   const roomId = roomIdInput.value.trim();
   if (!roomId) {
@@ -99,6 +131,10 @@ function joinRoom() {
     return;
   }
   console.log(`Joining room: ${roomId}`);
+  window.location.hash = roomId;
+  shareUrl.textContent = window.location.href;
+  shareUrl.href = window.location.href;
+  shareLink.style.display = "block";
   socket.emit("join_room", roomId);
 }
 

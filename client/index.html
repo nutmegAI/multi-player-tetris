@@ -10,6 +10,7 @@
     <h1>Multiplayer Tetris</h1>
 
     <div id="lobby">
+      <button id="new-room-btn">New Room</button>
       <input
         id="room-id-input"
         type="text"
@@ -17,6 +18,9 @@
         maxlength="20"
       />
       <button id="join-btn">Join Room</button>
+    </div>
+    <div id="share-link" style="display: none;">
+      Share this link: <a id="share-url" href=""></a>
     </div>
 
     <div id="status">Connecting to server...</div>

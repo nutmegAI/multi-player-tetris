@@ -39,6 +39,21 @@ h1 {
   width: 180px;
 }
 
+#new-room-btn {
+  padding: 8px 16px;
+  font-size: 16px;
+  font-family: monospace;
+  background: #4caf50;
+  color: #111;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#new-room-btn:hover {
+  background: #45a049;
+}
+
 #join-btn {
   padding: 8px 16px;
   font-size: 16px;
@@ -52,6 +67,17 @@ h1 {
 
 #join-btn:hover {
   background: #0cc;
+}
+
+#share-link {
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #aaa;
+  word-break: break-all;
+}
+
+#share-link a {
+  color: #0ff;
 }
 
 #status {
