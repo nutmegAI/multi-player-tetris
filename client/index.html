@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multiplayer Tetris</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <h1>Multiplayer Tetris</h1>
+
+    <div id="lobby">
+      <input
+        id="room-id-input"
+        type="text"
+        placeholder="Room ID"
+        maxlength="20"
+      />
+      <button id="join-btn">Join Room</button>
+    </div>
+
+    <div id="status">Connecting to server...</div>
+
+    <canvas id="game-canvas" width="300" height="600"></canvas>
+
+    <!-- Socket.IO client from CDN -->
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- Game logic module -->
+    <script src="game.js"></script>
+    <!-- Main app entry point -->
+    <script src="main.js"></script>
+  </body>
+</html>
