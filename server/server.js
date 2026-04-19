@@ -3,27 +3,40 @@ const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
 const roomManager = require("./roomManager");
-const { isValidAction } = require("./gameLogic");
+const {
+  canPlacePiece,
+  placePieceOnBoard,
+  clearLines,
+  canAnyPieceFit,
+} = require("./gameLogic");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Serve static files from /client
 app.use(express.static(path.join(__dirname, "..", "client")));
 
-// Fallback: serve index.html for any non-file routes
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "client", "index.html"));
 });
 
+function sendGameState(roomId) {
+  const room = roomManager.getRoom(roomId);
+  if (!room) return;
+  io.to(roomId).emit("game_state", {
+    board: room.board,
+    pieces: room.currentPieces,
+    currentTurn: room.currentTurn,
+    score: room.score,
+  });
+}
+
 io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
-  // Player requests to join a room
   socket.on("join_room", (roomId) => {
     if (!roomId || typeof roomId !== "string") {
-      socket.emit("error", "Invalid room ID");
+      socket.emit("room_error", "Invalid room ID");
       return;
     }
 
@@ -34,65 +47,92 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // Join the Socket.IO room for targeted broadcasting
     socket.join(roomId);
-    console.log(`Player ${socket.id} joined room ${roomId} (${result.playerCount}/2)`);
 
-    // Notify the player they joined
     socket.emit("room_joined", {
       roomId,
+      playerNumber: result.playerNumber,
       playerCount: result.playerCount,
     });
 
-    // Notify others in the room about the new player
     socket.to(roomId).emit("opponent_joined", {
       playerCount: result.playerCount,
     });
 
-    // If room is full, start the game
     if (result.ready) {
-      io.to(roomId).emit("start_game", { roomId });
+      const room = roomManager.getRoom(roomId);
+      io.to(room.players[0]).emit("game_start", { yourNumber: 0 });
+      io.to(room.players[1]).emit("game_start", { yourNumber: 1 });
+      sendGameState(roomId);
       console.log(`Game started in room ${roomId}`);
     }
   });
 
-  // Player sends a game action (e.g. move, rotate, drop)
-  socket.on("player_action", (data) => {
-    const { action } = data;
-    if (!isValidAction(action)) return;
+  socket.on("place_piece", (data) => {
+    const { roomId, pieceDefIdx, row, col } = data;
+    const playerNumber = roomManager.getPlayerNumber(socket.id);
+    const room = roomManager.getRoom(roomId);
 
-    const roomId = roomManager.getRoomForPlayer(socket.id);
-    if (!roomId) return;
+    if (playerNumber === -1 || !room) return;
+    if (room.state !== "playing") return;
+    if (room.currentTurn !== playerNumber) return;
 
-    // Relay the action to the opponent
-    socket.to(roomId).emit("opponent_action", { action });
+    if (!room.currentPieces.includes(pieceDefIdx)) return;
+    if (!canPlacePiece(room.board, pieceDefIdx, row, col)) return;
+
+    placePieceOnBoard(room.board, pieceDefIdx, row, col);
+    const linesCleared = clearLines(room.board);
+    room.score += linesCleared;
+    room.consecutiveSkips = 0;
+
+    roomManager.removePieceFromSet(roomId, pieceDefIdx);
+
+    if (room.currentPieces.length === 0) {
+      roomManager.generateNewPieces(roomId);
+    }
+
+    roomManager.advanceTurn(roomId);
+
+    if (linesCleared > 0) {
+      io.to(roomId).emit("lines_cleared", { count: linesCleared });
+    }
+
+    sendGameState(roomId);
+
+    if (!canAnyPieceFit(room.board, room.currentPieces)) {
+      room.state = "gameover";
+      io.to(roomId).emit("game_over", { score: room.score, reason: "No valid moves remaining" });
+    }
   });
 
-  // Player sends garbage lines to opponent
-  socket.on("send_garbage", (data) => {
-    const { lines } = data;
-    if (typeof lines !== "number" || lines <= 0) return;
+  socket.on("skip_turn", (roomId) => {
+    const playerNumber = roomManager.getPlayerNumber(socket.id);
+    const room = roomManager.getRoom(roomId);
 
-    const roomId = roomManager.getRoomForPlayer(socket.id);
-    if (!roomId) return;
+    if (playerNumber === -1 || !room) return;
+    if (room.state !== "playing") return;
+    if (room.currentTurn !== playerNumber) return;
 
-    // Relay garbage to the opponent
-    socket.to(roomId).emit("garbage_received", { lines });
+    room.consecutiveSkips++;
+
+    if (room.consecutiveSkips >= 2) {
+      room.state = "gameover";
+      io.to(roomId).emit("game_over", { score: room.score, reason: "Both players skipped" });
+      return;
+    }
+
+    roomManager.advanceTurn(roomId);
+    sendGameState(roomId);
+    socket.to(roomId).emit("opponent_skipped");
   });
 
-  // Handle player disconnect
   socket.on("disconnect", () => {
     console.log(`Player disconnected: ${socket.id}`);
-
     const result = roomManager.leaveRoom(socket.id);
     if (!result) return;
-
-    // Notify remaining player that opponent left
     if (!result.empty) {
       io.to(result.roomId).emit("opponent_left");
     }
-
-    console.log(`Cleaned up room ${result.roomId} after disconnect`);
   });
 });
 

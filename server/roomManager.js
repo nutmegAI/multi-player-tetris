@@ -1,57 +1,51 @@
-// Manages game rooms: creation, joining, cleanup
+const { generatePieceSet, createEmptyBoard } = require("./gameLogic");
 
 const MAX_PLAYERS_PER_ROOM = 2;
 
-// In-memory store of rooms
-// roomId -> { players: [socketId, socketId], state: "waiting" | "playing" }
 const rooms = {};
-
-// Maps socket ID to the room they are in
 const playerRoomMap = {};
 
-function createRoom(roomId) {
-  if (rooms[roomId]) {
-    return false;
-  }
-  rooms[roomId] = {
-    players: [],
-    state: "waiting",
-  };
-  return true;
-}
-
 function joinRoom(roomId, socketId) {
-  // Create room if it doesn't exist
   if (!rooms[roomId]) {
-    createRoom(roomId);
+    rooms[roomId] = {
+      players: [],
+      state: "waiting",
+      currentTurn: 0,
+      currentPieces: [],
+      board: createEmptyBoard(),
+      score: 0,
+      consecutiveSkips: 0,
+    };
   }
 
   const room = rooms[roomId];
 
-  // Reject if room is full
   if (room.players.length >= MAX_PLAYERS_PER_ROOM) {
     return { success: false, reason: "Room is full" };
   }
 
-  // Reject if player is already in this room
   if (room.players.includes(socketId)) {
     return { success: false, reason: "Already in room" };
   }
 
-  // Remove player from any existing room first
   leaveRoom(socketId);
 
   room.players.push(socketId);
   playerRoomMap[socketId] = roomId;
 
-  // Check if room is now full and ready to start
   const ready = room.players.length === MAX_PLAYERS_PER_ROOM;
   if (ready) {
     room.state = "playing";
+    room.currentTurn = 0;
+    room.currentPieces = generatePieceSet();
+    room.board = createEmptyBoard();
+    room.score = 0;
+    room.consecutiveSkips = 0;
   }
 
   return {
     success: true,
+    playerNumber: room.players.length - 1,
     playerCount: room.players.length,
     ready,
   };
@@ -67,19 +61,15 @@ function leaveRoom(socketId) {
     return null;
   }
 
-  // Remove player from room
   room.players = room.players.filter((id) => id !== socketId);
   delete playerRoomMap[socketId];
 
-  // Clean up empty rooms
   if (room.players.length === 0) {
     delete rooms[roomId];
     return { roomId, empty: true };
   }
 
-  // Reset room state if a player left during a game
   room.state = "waiting";
-
   return { roomId, empty: false };
 }
 
@@ -87,27 +77,43 @@ function getRoom(roomId) {
   return rooms[roomId] || null;
 }
 
-function getRoomForPlayer(socketId) {
+function getPlayerNumber(socketId) {
   const roomId = playerRoomMap[socketId];
-  if (!roomId) return null;
-  return roomId;
+  if (!roomId) return -1;
+  const room = rooms[roomId];
+  if (!room) return -1;
+  return room.players.indexOf(socketId);
 }
 
-function getOpponent(socketId) {
-  const roomId = playerRoomMap[socketId];
-  if (!roomId) return null;
+function advanceTurn(roomId) {
+  const room = rooms[roomId];
+  if (!room) return;
+  room.currentTurn = (room.currentTurn + 1) % 2;
+}
 
+function removePieceFromSet(roomId, pieceDefIdx) {
   const room = rooms[roomId];
   if (!room) return null;
+  const idx = room.currentPieces.indexOf(pieceDefIdx);
+  if (idx === -1) return null;
+  room.currentPieces.splice(idx, 1);
+  return room.currentPieces;
+}
 
-  return room.players.find((id) => id !== socketId) || null;
+function generateNewPieces(roomId) {
+  const room = rooms[roomId];
+  if (!room) return null;
+  room.currentPieces = generatePieceSet();
+  room.consecutiveSkips = 0;
+  return room.currentPieces;
 }
 
 module.exports = {
   joinRoom,
   leaveRoom,
   getRoom,
-  getRoomForPlayer,
-  getOpponent,
-  MAX_PLAYERS_PER_ROOM,
+  getPlayerNumber,
+  advanceTurn,
+  removePieceFromSet,
+  generateNewPieces,
 };

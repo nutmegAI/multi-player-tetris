@@ -1,71 +1,93 @@
-// Main client entry point: connects to server, handles UI and networking
-
 const SERVER_URL = window.location.origin;
 
 let socket = null;
 let currentRoomId = null;
+let myNumber = -1;
+let board = createEmptyBoard();
+let currentPieces = [];
+let selectedPieceIdx = -1;
+let currentTurn = -1;
+let score = 0;
+let gameStarted = false;
+let gameOver = false;
+let hoverCell = null;
 
-// DOM elements
 const newRoomBtn = document.getElementById("new-room-btn");
 const roomIdInput = document.getElementById("room-id-input");
 const joinBtn = document.getElementById("join-btn");
 const statusDisplay = document.getElementById("status");
+const scoreDisplay = document.getElementById("score");
 const shareLink = document.getElementById("share-link");
 const shareUrl = document.getElementById("share-url");
-const canvas = document.getElementById("game-canvas");
-const ctx = canvas.getContext("2d");
+const boardCanvas = document.getElementById("board-canvas");
+const boardCtx = boardCanvas.getContext("2d");
+const pieceCanvas = document.getElementById("piece-canvas");
+const pieceCtx = pieceCanvas.getContext("2d");
+const skipBtn = document.getElementById("skip-btn");
 
-// Initialize connection and event listeners
+const CANVAS_SIZE = BOARD_SIZE * CELL_SIZE;
+
 function init() {
   socket = io(SERVER_URL);
 
-  // --- Socket event handlers ---
-
   socket.on("connect", () => {
-    console.log("Connected to server");
-    setStatus("Connected. Enter a room ID to play.");
+    setStatus("Connected. Create or join a room to play.");
   });
 
   socket.on("disconnect", () => {
-    console.log("Disconnected from server");
     setStatus("Disconnected from server.");
   });
 
   socket.on("room_joined", (data) => {
-    console.log(`Joined room: ${data.roomId} (${data.playerCount}/2)`);
     currentRoomId = data.roomId;
+    myNumber = data.playerNumber;
     setStatus(`In room ${data.roomId}. Waiting for opponent...`);
   });
 
   socket.on("room_error", (reason) => {
-    console.log(`Room error: ${reason}`);
     setStatus(`Error: ${reason}`);
   });
 
   socket.on("opponent_joined", () => {
-    console.log("Opponent joined the room");
+    setStatus("Opponent joined! Starting game...");
   });
 
-  socket.on("start_game", (data) => {
-    console.log(`Game started in room ${data.roomId}`);
-    setStatus("Game started!");
-    startGame();
+  socket.on("game_start", (data) => {
+    myNumber = data.yourNumber;
+    gameStarted = true;
+    gameOver = false;
   });
 
-  socket.on("opponent_action", (data) => {
-    console.log(`Opponent action: ${data.action}`);
+  socket.on("game_state", (data) => {
+    board = data.board;
+    currentPieces = [...data.pieces];
+    currentTurn = data.currentTurn;
+    score = data.score;
+    if (selectedPieceIdx >= currentPieces.length) selectedPieceIdx = -1;
+    updateTurnStatus();
+    updateScore();
+    render();
   });
 
-  socket.on("garbage_received", (data) => {
-    console.log(`Garbage received: ${data.lines} lines`);
+  socket.on("lines_cleared", (data) => {
+    // Could add animation later; for now just flash status briefly
+    const msg = `${data.count} line${data.count > 1 ? "s" : ""} cleared!`;
+    flashStatus(msg);
+  });
+
+  socket.on("opponent_skipped", () => {
+    flashStatus("Opponent skipped their turn.");
+  });
+
+  socket.on("game_over", (data) => {
+    gameOver = true;
+    setStatus(`Game Over! ${data.reason}. Final score: ${data.score}`);
   });
 
   socket.on("opponent_left", () => {
-    console.log("Opponent left the room");
+    gameStarted = false;
     setStatus("Opponent left. Waiting for new opponent...");
   });
-
-  // --- UI event handlers ---
 
   newRoomBtn.addEventListener("click", createNewRoom);
   joinBtn.addEventListener("click", joinRoom);
@@ -73,45 +95,19 @@ function init() {
     if (e.key === "Enter") joinRoom();
   });
 
-  // Auto-join if room ID is in the URL hash
+  boardCanvas.addEventListener("mousemove", handleMouseMove);
+  boardCanvas.addEventListener("mouseleave", handleMouseLeave);
+  boardCanvas.addEventListener("click", handleBoardClick);
+  pieceCanvas.addEventListener("click", handlePieceClick);
+  skipBtn.addEventListener("click", handleSkip);
+
   const hashRoom = window.location.hash.slice(1);
   if (hashRoom) {
     roomIdInput.value = hashRoom;
-    socket.on("connect", () => {
-      joinRoom();
-    });
+    socket.on("connect", () => joinRoom());
   }
 
-  // Keyboard controls for game actions
-  document.addEventListener("keydown", (e) => {
-    if (!currentRoomId) return;
-
-    const actionMap = {
-      ArrowLeft: "left",
-      ArrowRight: "right",
-      ArrowUp: "rotate",
-      ArrowDown: "drop",
-      Space: "hard_drop",
-    };
-
-    const action = actionMap[e.code];
-    if (action) {
-      e.preventDefault();
-      handleInput(action);
-      socket.emit("player_action", { roomId: currentRoomId, action });
-    }
-  });
-
-  drawEmptyBoard();
-}
-
-function generateRoomId() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let id = "";
-  for (let i = 0; i < 6; i++) {
-    id += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return id;
+  render();
 }
 
 function createNewRoom() {
@@ -130,7 +126,6 @@ function joinRoom() {
     setStatus("Please enter a room ID");
     return;
   }
-  console.log(`Joining room: ${roomId}`);
   window.location.hash = roomId;
   shareUrl.textContent = window.location.href;
   shareUrl.href = window.location.href;
@@ -138,43 +133,150 @@ function joinRoom() {
   socket.emit("join_room", roomId);
 }
 
-function startGame() {
-  const board = createEmptyBoard();
-  drawBoard(board);
-  startGameLoop();
+function generateRoomId() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let id = "";
+  for (let i = 0; i < 6; i++) {
+    id += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return id;
+}
+
+function updateTurnStatus() {
+  if (gameOver) return;
+  if (!gameStarted) return;
+  if (currentTurn === myNumber) {
+    setStatus("Your turn! Select a piece, then click the board to place it.");
+    boardCanvas.classList.remove("disabled");
+  } else {
+    setStatus("Opponent's turn...");
+    boardCanvas.classList.add("disabled");
+  }
+}
+
+function updateScore() {
+  scoreDisplay.textContent = score;
 }
 
 function setStatus(text) {
   statusDisplay.textContent = text;
 }
 
-// --- Rendering ---
-
-function drawEmptyBoard() {
-  const board = createEmptyBoard();
-  drawBoard(board);
+let statusFlashTimer = null;
+function flashStatus(text) {
+  setStatus(text);
+  if (statusFlashTimer) clearTimeout(statusFlashTimer);
+  statusFlashTimer = setTimeout(() => {
+    updateTurnStatus();
+  }, 1500);
 }
 
-function drawBoard(board) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  for (let row = 0; row < BOARD_HEIGHT; row++) {
-    for (let col = 0; col < BOARD_WIDTH; col++) {
-      const x = col * CELL_SIZE;
-      const y = row * CELL_SIZE;
-
-      if (board[row][col] === 0) {
-        ctx.strokeStyle = "#333";
-        ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
-      } else {
-        ctx.fillStyle = board[row][col];
-        ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
-        ctx.strokeStyle = "#222";
-        ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
-      }
-    }
+function render() {
+  let highlight = null;
+  if (
+    hoverCell &&
+    gameStarted &&
+    !gameOver &&
+    currentTurn === myNumber &&
+    selectedPieceIdx >= 0 &&
+    selectedPieceIdx < currentPieces.length
+  ) {
+    highlight = {
+      pieceDefIdx: currentPieces[selectedPieceIdx],
+      row: hoverCell.row,
+      col: hoverCell.col,
+    };
   }
+
+  drawBoard(boardCtx, board, highlight, CELL_SIZE, CANVAS_SIZE);
+  drawPieceSelector(
+    pieceCtx,
+    currentPieces,
+    selectedPieceIdx,
+    CELL_SIZE,
+    pieceCanvas.width,
+    pieceCanvas.height
+  );
 }
 
-// Start the app
+function getCellFromMouse(e) {
+  const rect = boardCanvas.getBoundingClientRect();
+  const scaleX = CANVAS_SIZE / rect.width;
+  const scaleY = CANVAS_SIZE / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+  const col = Math.floor(x / CELL_SIZE);
+  const row = Math.floor(y / CELL_SIZE);
+  if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) return null;
+  return { row, col };
+}
+
+function handleMouseMove(e) {
+  hoverCell = getCellFromMouse(e);
+  render();
+}
+
+function handleMouseLeave() {
+  hoverCell = null;
+  render();
+}
+
+function handleBoardClick(e) {
+  if (!gameStarted || gameOver) return;
+  if (currentTurn !== myNumber) return;
+  if (selectedPieceIdx < 0 || selectedPieceIdx >= currentPieces.length) {
+    flashStatus("Select a piece first!");
+    return;
+  }
+
+  const cell = getCellFromMouse(e);
+  if (!cell) return;
+
+  const pieceDefIdx = currentPieces[selectedPieceIdx];
+  if (!canPlacePiece(board, pieceDefIdx, cell.row, cell.col)) {
+    flashStatus("Can't place piece there.");
+    return;
+  }
+
+  socket.emit("place_piece", {
+    roomId: currentRoomId,
+    pieceDefIdx,
+    row: cell.row,
+    col: cell.col,
+  });
+}
+
+function handlePieceClick(e) {
+  if (!gameStarted || gameOver) return;
+  if (currentTurn !== myNumber) {
+    flashStatus("Wait for your turn.");
+    return;
+  }
+
+  const rect = pieceCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const scaleX = pieceCanvas.width / rect.width;
+  const realX = x * scaleX;
+  const spacing = pieceCanvas.width / 3;
+
+  const idx = Math.floor(realX / spacing);
+  if (idx < 0 || idx >= currentPieces.length) return;
+
+  selectedPieceIdx = selectedPieceIdx === idx ? -1 : idx;
+  render();
+}
+
+function handleSkip() {
+  if (!gameStarted || gameOver) return;
+  if (currentTurn !== myNumber) {
+    flashStatus("Wait for your turn.");
+    return;
+  }
+  if (canAnyPieceFit(board, currentPieces)) {
+    flashStatus("You still have valid moves!");
+    return;
+  }
+  socket.emit("skip_turn", currentRoomId);
+}
+
 init();

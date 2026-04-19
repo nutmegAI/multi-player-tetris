@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Multiplayer Tetris</title>
+    <title>Block Blast</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <h1>Multiplayer Tetris</h1>
+    <h1>Block Blast</h1>
 
     <div id="lobby">
       <button id="new-room-btn">New Room</button>
@@ -25,13 +25,18 @@
 
     <div id="status">Connecting to server...</div>
 
-    <canvas id="game-canvas" width="300" height="600"></canvas>
+    <div id="score-display">Score: <span id="score">0</span></div>
 
-    <!-- Socket.IO client from CDN -->
+    <canvas id="board-canvas" class="board" width="480" height="480"></canvas>
+
+    <div id="piece-selector">
+      <div id="piece-selector-label">Available pieces:</div>
+      <canvas id="piece-canvas" width="360" height="120"></canvas>
+      <button id="skip-btn">Skip Turn (when no moves)</button>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
-    <!-- Game logic module -->
     <script src="game.js"></script>
-    <!-- Main app entry point -->
     <script src="main.js"></script>
   </body>
 </html>
