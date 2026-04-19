@@ -11,6 +11,10 @@ let score = 0;
 let gameStarted = false;
 let gameOver = false;
 let hoverCell = null;
+let lastTapTime = 0;
+let lastTapCell = null;
+let isTouchDevice = false;
+const DOUBLE_TAP_DELAY = 300;
 
 const newRoomBtn = document.getElementById("new-room-btn");
 const roomIdInput = document.getElementById("room-id-input");
@@ -98,6 +102,9 @@ function init() {
   boardCanvas.addEventListener("mousemove", handleMouseMove);
   boardCanvas.addEventListener("mouseleave", handleMouseLeave);
   boardCanvas.addEventListener("click", handleBoardClick);
+  boardCanvas.addEventListener("touchstart", handleTouchStart, { passive: false });
+  boardCanvas.addEventListener("touchmove", handleTouchMove, { passive: false });
+  boardCanvas.addEventListener("touchend", handleTouchEnd, { passive: false });
   pieceCanvas.addEventListener("click", handlePieceClick);
   skipBtn.addEventListener("click", handleSkip);
 
@@ -221,7 +228,77 @@ function handleMouseLeave() {
   render();
 }
 
+function getCellFromTouch(touch) {
+  const rect = boardCanvas.getBoundingClientRect();
+  const scaleX = CANVAS_SIZE / rect.width;
+  const scaleY = CANVAS_SIZE / rect.height;
+  const x = (touch.clientX - rect.left) * scaleX;
+  const y = (touch.clientY - rect.top) * scaleY;
+  const col = Math.floor(x / CELL_SIZE);
+  const row = Math.floor(y / CELL_SIZE);
+  if (row < 0 || row >= BOARD_SIZE || col < 0 || col >= BOARD_SIZE) return null;
+  return { row, col };
+}
+
+function handleTouchStart(e) {
+  e.preventDefault();
+  isTouchDevice = true;
+}
+
+function handleTouchMove(e) {
+  e.preventDefault();
+}
+
+function handleTouchEnd(e) {
+  e.preventDefault();
+  if (!gameStarted || gameOver) return;
+  if (currentTurn !== myNumber) return;
+
+  const touch = e.changedTouches[0];
+  const cell = getCellFromTouch(touch);
+  if (!cell) return;
+
+  const now = Date.now();
+  const timeSinceLastTap = now - lastTapTime;
+
+  if (
+    timeSinceLastTap < DOUBLE_TAP_DELAY &&
+    lastTapCell &&
+    lastTapCell.row === cell.row &&
+    lastTapCell.col === cell.col
+  ) {
+    lastTapTime = 0;
+    lastTapCell = null;
+
+    if (selectedPieceIdx < 0 || selectedPieceIdx >= currentPieces.length) {
+      flashStatus("Select a piece first!");
+      return;
+    }
+
+    const pieceDefIdx = currentPieces[selectedPieceIdx];
+    if (!canPlacePiece(board, pieceDefIdx, cell.row, cell.col)) {
+      flashStatus("Can't place piece there.");
+      return;
+    }
+
+    hoverCell = null;
+    render();
+    socket.emit("place_piece", {
+      roomId: currentRoomId,
+      pieceDefIdx,
+      row: cell.row,
+      col: cell.col,
+    });
+  } else {
+    lastTapTime = now;
+    lastTapCell = cell;
+    hoverCell = cell;
+    render();
+  }
+}
+
 function handleBoardClick(e) {
+  if (isTouchDevice) return;
   if (!gameStarted || gameOver) return;
   if (currentTurn !== myNumber) return;
   if (selectedPieceIdx < 0 || selectedPieceIdx >= currentPieces.length) {

@@ -96,6 +96,7 @@ canvas.board {
   border: 2px solid #333;
   cursor: pointer;
   margin-bottom: 16px;
+  touch-action: none;
 }
 
 canvas.board.disabled {
@@ -120,6 +121,7 @@ canvas#piece-canvas {
   border: 2px solid #333;
   border-radius: 4px;
   cursor: pointer;
+  touch-action: none;
 }
 
 #skip-btn {
