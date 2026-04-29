@@ -149,9 +149,10 @@ function canAnyPieceFit(board, pieces) {
   return false;
 }
 
-function drawBoard(ctx, board, highlightCells, cellSize, canvasSize) {
+function drawBoard(ctx, board, highlightCells, cellSize, canvasSize, themeColors) {
+  const tc = themeColors || { board: "#000000", grid: "#2a2a2a" };
   ctx.clearRect(0, 0, canvasSize, canvasSize);
-  ctx.fillStyle = "#111";
+  ctx.fillStyle = tc.board;
   ctx.fillRect(0, 0, canvasSize, canvasSize);
 
   for (let row = 0; row < BOARD_SIZE; row++) {
@@ -166,7 +167,7 @@ function drawBoard(ctx, board, highlightCells, cellSize, canvasSize) {
         ctx.lineWidth = 1;
         ctx.strokeRect(x, y, cellSize, cellSize);
       } else {
-        ctx.strokeStyle = "#2a2a2a";
+        ctx.strokeStyle = tc.grid;
         ctx.lineWidth = 1;
         ctx.strokeRect(x, y, cellSize, cellSize);
       }
@@ -209,9 +210,10 @@ function drawClearAnimation(ctx, board, rows, cols, cellSize, canvasSize, progre
   }
 }
 
-function drawPieceSelector(ctx, pieces, selectedIdx, currentPlayerNumber, cellSize, canvasWidth, canvasHeight) {
+function drawPieceSelector(ctx, pieces, selectedIdx, currentPlayerNumber, cellSize, canvasWidth, canvasHeight, themeColors) {
+  const tc = themeColors || { board: "#000000", grid: "#2a2a2a" };
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-  ctx.fillStyle = "#111";
+  ctx.fillStyle = tc.board;
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
   if (!pieces || pieces.length === 0) return;

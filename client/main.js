@@ -20,6 +20,12 @@ let pendingState = null;
 
 const CLEAR_ANIM_DURATION = 900;
 
+const theme = {
+  bg: "#111111",
+  board: "#000000",
+  grid: "#2a2a2a",
+};
+
 const newRoomBtn = document.getElementById("new-room-btn");
 const soloBtn = document.getElementById("solo-btn");
 const roomIdInput = document.getElementById("room-id-input");
@@ -33,6 +39,9 @@ const boardCtx = boardCanvas.getContext("2d");
 const pieceCanvas = document.getElementById("piece-canvas");
 const pieceCtx = pieceCanvas.getContext("2d");
 const skipBtn = document.getElementById("skip-btn");
+const bgColorInput = document.getElementById("bg-color");
+const boardColorInput = document.getElementById("board-color");
+const gridColorInput = document.getElementById("grid-color");
 
 const CANVAS_SIZE = BOARD_SIZE * CELL_SIZE;
 
@@ -113,6 +122,20 @@ function init() {
   boardCanvas.addEventListener("touchend", handleTouchEnd, { passive: false });
   pieceCanvas.addEventListener("click", handlePieceClick);
   skipBtn.addEventListener("click", handleSkip);
+
+  bgColorInput.addEventListener("input", (e) => {
+    theme.bg = e.target.value;
+    document.body.style.backgroundColor = theme.bg;
+    render();
+  });
+  boardColorInput.addEventListener("input", (e) => {
+    theme.board = e.target.value;
+    render();
+  });
+  gridColorInput.addEventListener("input", (e) => {
+    theme.grid = e.target.value;
+    render();
+  });
 
   const hashRoom = window.location.hash.slice(1);
   if (hashRoom) {
@@ -230,7 +253,7 @@ function startClearAnimation(rows, cols) {
       };
     }
 
-    drawBoard(boardCtx, oldBoard, highlight, CELL_SIZE, CANVAS_SIZE);
+    drawBoard(boardCtx, oldBoard, highlight, CELL_SIZE, CANVAS_SIZE, theme);
     drawClearAnimation(boardCtx, oldBoard, rows, cols, CELL_SIZE, CANVAS_SIZE, progress);
 
     if (progress < 1) {
@@ -267,7 +290,7 @@ function render() {
     };
   }
 
-  drawBoard(boardCtx, board, highlight, CELL_SIZE, CANVAS_SIZE);
+  drawBoard(boardCtx, board, highlight, CELL_SIZE, CANVAS_SIZE, theme);
   drawPieceSelector(
     pieceCtx,
     currentPieces,
@@ -275,7 +298,8 @@ function render() {
     currentTurn,
     CELL_SIZE,
     pieceCanvas.width,
-    pieceCanvas.height
+    pieceCanvas.height,
+    theme
   );
 }
 
