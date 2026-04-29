@@ -34,13 +34,16 @@ function sendGameState(roomId) {
 io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
-  socket.on("join_room", (roomId) => {
+  socket.on("join_room", (data) => {
+    const roomId = typeof data === "string" ? data : data.roomId;
+    const isSolo = typeof data === "object" ? !!data.isSolo : false;
+
     if (!roomId || typeof roomId !== "string") {
       socket.emit("room_error", "Invalid room ID");
       return;
     }
 
-    const result = roomManager.joinRoom(roomId, socket.id);
+    const result = roomManager.joinRoom(roomId, socket.id, isSolo);
 
     if (!result.success) {
       socket.emit("room_error", result.reason);
@@ -53,18 +56,23 @@ io.on("connection", (socket) => {
       roomId,
       playerNumber: result.playerNumber,
       playerCount: result.playerCount,
+      isSolo: result.isSolo,
     });
 
-    socket.to(roomId).emit("opponent_joined", {
-      playerCount: result.playerCount,
-    });
+    if (!isSolo) {
+      socket.to(roomId).emit("opponent_joined", {
+        playerCount: result.playerCount,
+      });
+    }
 
     if (result.ready) {
       const room = roomManager.getRoom(roomId);
-      io.to(room.players[0]).emit("game_start", { yourNumber: 0 });
-      io.to(room.players[1]).emit("game_start", { yourNumber: 1 });
+      io.to(room.players[0]).emit("game_start", { yourNumber: 0, isSolo });
+      if (!isSolo) {
+        io.to(room.players[1]).emit("game_start", { yourNumber: 1, isSolo: false });
+      }
       sendGameState(roomId);
-      console.log(`Game started in room ${roomId}`);
+      console.log(`Game started in room ${roomId}${isSolo ? " (solo)" : ""}`);
     }
   });
 
@@ -112,6 +120,12 @@ io.on("connection", (socket) => {
     if (playerNumber === -1 || !room) return;
     if (room.state !== "playing") return;
     if (room.currentTurn !== playerNumber) return;
+
+    if (room.isSolo) {
+      room.state = "gameover";
+      io.to(roomId).emit("game_over", { score: room.score, reason: "No valid moves remaining" });
+      return;
+    }
 
     room.consecutiveSkips++;
 

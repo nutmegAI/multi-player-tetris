@@ -5,7 +5,7 @@ const MAX_PLAYERS_PER_ROOM = 2;
 const rooms = {};
 const playerRoomMap = {};
 
-function joinRoom(roomId, socketId) {
+function joinRoom(roomId, socketId, isSolo = false) {
   if (!rooms[roomId]) {
     rooms[roomId] = {
       players: [],
@@ -15,12 +15,17 @@ function joinRoom(roomId, socketId) {
       board: createEmptyBoard(),
       score: 0,
       consecutiveSkips: 0,
+      isSolo: false,
     };
   }
 
   const room = rooms[roomId];
 
-  if (room.players.length >= MAX_PLAYERS_PER_ROOM) {
+  if (room.isSolo && room.players.length >= 1) {
+    return { success: false, reason: "Room is full" };
+  }
+
+  if (!room.isSolo && room.players.length >= MAX_PLAYERS_PER_ROOM) {
     return { success: false, reason: "Room is full" };
   }
 
@@ -30,10 +35,11 @@ function joinRoom(roomId, socketId) {
 
   leaveRoom(socketId);
 
+  room.isSolo = isSolo;
   room.players.push(socketId);
   playerRoomMap[socketId] = roomId;
 
-  const ready = room.players.length === MAX_PLAYERS_PER_ROOM;
+  const ready = isSolo || room.players.length === MAX_PLAYERS_PER_ROOM;
   if (ready) {
     room.state = "playing";
     room.currentTurn = 0;
@@ -48,6 +54,7 @@ function joinRoom(roomId, socketId) {
     playerNumber: room.players.length - 1,
     playerCount: room.players.length,
     ready,
+    isSolo,
   };
 }
 
@@ -88,6 +95,7 @@ function getPlayerNumber(socketId) {
 function advanceTurn(roomId) {
   const room = rooms[roomId];
   if (!room) return;
+  if (room.isSolo) return;
   room.currentTurn = (room.currentTurn + 1) % 2;
 }
 

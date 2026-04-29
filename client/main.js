@@ -3,6 +3,7 @@ const SERVER_URL = window.location.origin;
 let socket = null;
 let currentRoomId = null;
 let myNumber = -1;
+let isSolo = false;
 let board = createEmptyBoard();
 let currentPieces = [];
 let selectedPieceIdx = -1;
@@ -11,12 +12,11 @@ let score = 0;
 let gameStarted = false;
 let gameOver = false;
 let hoverCell = null;
-let lastTapTime = 0;
 let lastTapCell = null;
 let isTouchDevice = false;
-const DOUBLE_TAP_DELAY = 300;
 
 const newRoomBtn = document.getElementById("new-room-btn");
+const soloBtn = document.getElementById("solo-btn");
 const roomIdInput = document.getElementById("room-id-input");
 const joinBtn = document.getElementById("join-btn");
 const statusDisplay = document.getElementById("status");
@@ -45,7 +45,8 @@ function init() {
   socket.on("room_joined", (data) => {
     currentRoomId = data.roomId;
     myNumber = data.playerNumber;
-    setStatus(`In room ${data.roomId}. Waiting for opponent...`);
+    isSolo = !!data.isSolo;
+    setStatus(isSolo ? `Solo mode in room ${data.roomId}` : `In room ${data.roomId}. Waiting for opponent...`);
   });
 
   socket.on("room_error", (reason) => {
@@ -58,6 +59,7 @@ function init() {
 
   socket.on("game_start", (data) => {
     myNumber = data.yourNumber;
+    isSolo = !!data.isSolo;
     gameStarted = true;
     gameOver = false;
   });
@@ -67,6 +69,7 @@ function init() {
     currentPieces = [...data.pieces];
     currentTurn = data.currentTurn;
     score = data.score;
+    lastTapCell = null;
     if (selectedPieceIdx >= currentPieces.length) selectedPieceIdx = -1;
     updateTurnStatus();
     updateScore();
@@ -74,9 +77,9 @@ function init() {
   });
 
   socket.on("lines_cleared", (data) => {
-    // Could add animation later; for now just flash status briefly
     const msg = `${data.count} line${data.count > 1 ? "s" : ""} cleared!`;
     flashStatus(msg);
+    new Audio("clear.wav").play();
   });
 
   socket.on("opponent_skipped", () => {
@@ -94,6 +97,7 @@ function init() {
   });
 
   newRoomBtn.addEventListener("click", createNewRoom);
+  soloBtn.addEventListener("click", startSolo);
   joinBtn.addEventListener("click", joinRoom);
   roomIdInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") joinRoom();
@@ -125,6 +129,13 @@ function createNewRoom() {
   shareUrl.href = window.location.href;
   shareLink.style.display = "block";
   socket.emit("join_room", roomId);
+}
+
+function startSolo() {
+  const roomId = "solo-" + generateRoomId();
+  isSolo = true;
+  shareLink.style.display = "none";
+  socket.emit("join_room", { roomId, isSolo: true });
 }
 
 function joinRoom() {
@@ -260,43 +271,40 @@ function handleTouchEnd(e) {
   const cell = getCellFromTouch(touch);
   if (!cell) return;
 
-  const now = Date.now();
-  const timeSinceLastTap = now - lastTapTime;
-
-  if (
-    timeSinceLastTap < DOUBLE_TAP_DELAY &&
+  const isSecondTapOnSameCell =
     lastTapCell &&
     lastTapCell.row === cell.row &&
-    lastTapCell.col === cell.col
-  ) {
-    lastTapTime = 0;
-    lastTapCell = null;
+    lastTapCell.col === cell.col;
 
-    if (selectedPieceIdx < 0 || selectedPieceIdx >= currentPieces.length) {
-      flashStatus("Select a piece first!");
-      return;
-    }
-
-    const pieceDefIdx = currentPieces[selectedPieceIdx];
-    if (!canPlacePiece(board, pieceDefIdx, cell.row, cell.col)) {
-      flashStatus("Can't place piece there.");
-      return;
-    }
-
-    hoverCell = null;
-    render();
-    socket.emit("place_piece", {
-      roomId: currentRoomId,
-      pieceDefIdx,
-      row: cell.row,
-      col: cell.col,
-    });
-  } else {
-    lastTapTime = now;
+  if (!isSecondTapOnSameCell) {
     lastTapCell = cell;
     hoverCell = cell;
     render();
+    return;
   }
+
+  if (selectedPieceIdx < 0 || selectedPieceIdx >= currentPieces.length) {
+    flashStatus("Select a piece first!");
+    return;
+  }
+
+  const pieceDefIdx = currentPieces[selectedPieceIdx];
+  if (!canPlacePiece(board, pieceDefIdx, cell.row, cell.col)) {
+    hoverCell = cell;
+    render();
+    flashStatus("Can't place piece there.");
+    return;
+  }
+
+  lastTapCell = null;
+  hoverCell = null;
+  render();
+  socket.emit("place_piece", {
+    roomId: currentRoomId,
+    pieceDefIdx,
+    row: cell.row,
+    col: cell.col,
+  });
 }
 
 function handleBoardClick(e) {
