@@ -8,6 +8,7 @@ const {
   placePieceOnBoard,
   clearLines,
   canAnyPieceFit,
+  findLinesToClear,
 } = require("./gameLogic");
 
 const app = express();
@@ -89,7 +90,9 @@ io.on("connection", (socket) => {
     if (!canPlacePiece(room.board, pieceDefIdx, row, col)) return;
 
     placePieceOnBoard(room.board, pieceDefIdx, row, col, playerNumber);
-    const linesCleared = clearLines(room.board);
+    const linesInfo = findLinesToClear(room.board);
+    const linesCleared = linesInfo.rowsToClear.length + linesInfo.colsToClear.length;
+    clearLines(room.board);
     room.score += linesCleared;
     room.consecutiveSkips = 0;
 
@@ -101,11 +104,15 @@ io.on("connection", (socket) => {
 
     roomManager.advanceTurn(roomId);
 
-    if (linesCleared > 0) {
-      io.to(roomId).emit("lines_cleared", { count: linesCleared });
-    }
-
     sendGameState(roomId);
+
+    if (linesCleared > 0) {
+      io.to(roomId).emit("lines_cleared", {
+        count: linesCleared,
+        rows: linesInfo.rowsToClear,
+        cols: linesInfo.colsToClear,
+      });
+    }
 
     if (!canAnyPieceFit(room.board, room.currentPieces)) {
       room.state = "gameover";

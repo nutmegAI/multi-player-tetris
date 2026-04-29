@@ -15,6 +15,11 @@ let hoverCell = null;
 let lastTapCell = null;
 let isTouchDevice = false;
 
+let clearAnim = null;
+let pendingState = null;
+
+const CLEAR_ANIM_DURATION = 900;
+
 const newRoomBtn = document.getElementById("new-room-btn");
 const soloBtn = document.getElementById("solo-btn");
 const roomIdInput = document.getElementById("room-id-input");
@@ -65,21 +70,18 @@ function init() {
   });
 
   socket.on("game_state", (data) => {
-    board = data.board;
-    currentPieces = [...data.pieces];
-    currentTurn = data.currentTurn;
-    score = data.score;
-    lastTapCell = null;
-    if (selectedPieceIdx >= currentPieces.length) selectedPieceIdx = -1;
-    updateTurnStatus();
-    updateScore();
-    render();
+    if (clearAnim) {
+      pendingState = data;
+      return;
+    }
+    applyGameState(data);
   });
 
   socket.on("lines_cleared", (data) => {
     const msg = `${data.count} line${data.count > 1 ? "s" : ""} cleared!`;
     flashStatus(msg);
     new Audio("clear.wav").play();
+    startClearAnimation(data.rows, data.cols);
   });
 
   socket.on("opponent_skipped", () => {
@@ -187,6 +189,64 @@ function flashStatus(text) {
   statusFlashTimer = setTimeout(() => {
     updateTurnStatus();
   }, 1500);
+}
+
+function applyGameState(data) {
+  board = data.board;
+  currentPieces = [...data.pieces];
+  currentTurn = data.currentTurn;
+  score = data.score;
+  lastTapCell = null;
+  if (selectedPieceIdx >= currentPieces.length) selectedPieceIdx = -1;
+  updateTurnStatus();
+  updateScore();
+  render();
+}
+
+function startClearAnimation(rows, cols) {
+  const oldBoard = board.map(r => [...r]);
+  const startTime = performance.now();
+
+  clearAnim = { oldBoard, rows, cols, startTime };
+
+  function tick(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / CLEAR_ANIM_DURATION, 1);
+
+    let highlight = null;
+    if (
+      hoverCell &&
+      gameStarted &&
+      !gameOver &&
+      currentTurn === myNumber &&
+      selectedPieceIdx >= 0 &&
+      selectedPieceIdx < currentPieces.length
+    ) {
+      highlight = {
+        pieceDefIdx: currentPieces[selectedPieceIdx],
+        playerNumber: currentTurn,
+        row: hoverCell.row,
+        col: hoverCell.col,
+      };
+    }
+
+    drawBoard(boardCtx, oldBoard, highlight, CELL_SIZE, CANVAS_SIZE);
+    drawClearAnimation(boardCtx, oldBoard, rows, cols, CELL_SIZE, CANVAS_SIZE, progress);
+
+    if (progress < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      clearAnim = null;
+      if (pendingState) {
+        applyGameState(pendingState);
+        pendingState = null;
+      } else {
+        render();
+      }
+    }
+  }
+
+  requestAnimationFrame(tick);
 }
 
 function render() {

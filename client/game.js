@@ -190,6 +190,25 @@ function drawBoard(ctx, board, highlightCells, cellSize, canvasSize) {
   }
 }
 
+function drawClearAnimation(ctx, board, rows, cols, cellSize, canvasSize, progress) {
+  const alpha = 0.8 * (1 - progress);
+  const flash = Math.sin(progress * Math.PI * 4) > 0;
+
+  ctx.fillStyle = flash ? `rgba(255, 255, 255, ${alpha})` : `rgba(0, 255, 255, ${alpha})`;
+
+  for (const r of rows) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      ctx.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
+    }
+  }
+
+  for (const c of cols) {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      ctx.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
+    }
+  }
+}
+
 function drawPieceSelector(ctx, pieces, selectedIdx, currentPlayerNumber, cellSize, canvasWidth, canvasHeight) {
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
   ctx.fillStyle = "#111";

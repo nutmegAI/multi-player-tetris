@@ -100,7 +100,7 @@ function placePieceOnBoard(board, pieceDefIdx, row, col, playerNumber) {
   }
 }
 
-function clearLines(board) {
+function findLinesToClear(board) {
   const rowsToClear = [];
   const colsToClear = [];
 
@@ -116,6 +116,12 @@ function clearLines(board) {
     if (full) colsToClear.push(c);
   }
 
+  return { rowsToClear, colsToClear };
+}
+
+function clearLines(board) {
+  const { rowsToClear, colsToClear } = findLinesToClear(board);
+
   for (const r of rowsToClear) {
     for (let c = 0; c < BOARD_SIZE; c++) board[r][c] = null;
   }
@@ -124,7 +130,7 @@ function clearLines(board) {
     for (let r = 0; r < BOARD_SIZE; r++) board[r][c] = null;
   }
 
-  return rowsToClear.length + colsToClear.length;
+  return { count: rowsToClear.length + colsToClear.length, rows: rowsToClear, cols: colsToClear };
 }
 
 function canAnyPieceFit(board, pieces) {
@@ -146,6 +152,7 @@ module.exports = {
   canPlacePiece,
   getPieceColor,
   placePieceOnBoard,
+  findLinesToClear,
   clearLines,
   canAnyPieceFit,
 };
