@@ -1,0 +1,30 @@
+{
+  "players": {
+    "JB": {
+      "xp": 75,
+      "highScores": []
+    },
+    "J": {
+      "xp": 0,
+      "highScores": [
+        0
+      ]
+    },
+    "auto": {
+      "xp": 775,
+      "highScores": [
+        31
+      ]
+    },
+    "Anonymous": {
+      "xp": 275,
+      "highScores": [
+        11
+      ]
+    },
+    "auto2.0": {
+      "xp": 0,
+      "highScores": []
+    }
+  }
+}

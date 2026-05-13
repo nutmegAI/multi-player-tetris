@@ -9,11 +9,13 @@ let currentPieces = [];
 let selectedPieceIdx = -1;
 let currentTurn = -1;
 let score = 0;
+let xp = 0;
 let gameStarted = false;
 let gameOver = false;
 let hoverCell = null;
 let lastTapCell = null;
 let isTouchDevice = false;
+let autoPlayInterval = null;
 
 let clearAnim = null;
 let pendingState = null;
@@ -32,6 +34,9 @@ const roomIdInput = document.getElementById("room-id-input");
 const joinBtn = document.getElementById("join-btn");
 const statusDisplay = document.getElementById("status");
 const scoreDisplay = document.getElementById("score");
+const xpDisplay = document.getElementById("xp");
+const leaderboardBody = document.getElementById("leaderboard-body");
+const playerNameInput = document.getElementById("player-name");
 const shareLink = document.getElementById("share-link");
 const shareUrl = document.getElementById("share-url");
 const boardCanvas = document.getElementById("board-canvas");
@@ -39,6 +44,7 @@ const boardCtx = boardCanvas.getContext("2d");
 const pieceCanvas = document.getElementById("piece-canvas");
 const pieceCtx = pieceCanvas.getContext("2d");
 const skipBtn = document.getElementById("skip-btn");
+const autoPlayBtn = document.getElementById("auto-play-btn");
 const bgColorInput = document.getElementById("bg-color");
 const boardColorInput = document.getElementById("board-color");
 const gridColorInput = document.getElementById("grid-color");
@@ -91,6 +97,18 @@ function init() {
     flashStatus(msg);
     new Audio("clear.wav").play();
     startClearAnimation(data.rows, data.cols);
+  });
+
+  socket.on("xp_update", (data) => {
+    xp = data.xp;
+    updateXP();
+    if (data.xpGained) {
+      flashStatus(`+${data.xpGained} XP!`);
+    }
+  });
+
+  socket.on("leaderboard", (entries) => {
+    renderLeaderboard(entries);
   });
 
   socket.on("opponent_skipped", () => {
@@ -146,6 +164,10 @@ function init() {
   render();
 }
 
+function getPlayerName() {
+  return playerNameInput.value.trim() || "Anonymous";
+}
+
 function createNewRoom() {
   const roomId = generateRoomId();
   roomIdInput.value = roomId;
@@ -153,14 +175,14 @@ function createNewRoom() {
   shareUrl.textContent = window.location.href;
   shareUrl.href = window.location.href;
   shareLink.style.display = "block";
-  socket.emit("join_room", roomId);
+  socket.emit("join_room", { roomId, playerName: getPlayerName() });
 }
 
 function startSolo() {
   const roomId = "solo-" + generateRoomId();
   isSolo = true;
   shareLink.style.display = "none";
-  socket.emit("join_room", { roomId, isSolo: true });
+  socket.emit("join_room", { roomId, isSolo: true, playerName: getPlayerName() });
 }
 
 function joinRoom() {
@@ -173,7 +195,7 @@ function joinRoom() {
   shareUrl.textContent = window.location.href;
   shareUrl.href = window.location.href;
   shareLink.style.display = "block";
-  socket.emit("join_room", roomId);
+  socket.emit("join_room", { roomId, playerName: getPlayerName() });
 }
 
 function generateRoomId() {
@@ -199,6 +221,19 @@ function updateTurnStatus() {
 
 function updateScore() {
   scoreDisplay.textContent = score;
+}
+
+function updateXP() {
+  xpDisplay.textContent = xp;
+}
+
+function renderLeaderboard(entries) {
+  leaderboardBody.innerHTML = "";
+  entries.forEach((entry, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${i + 1}</td><td>${entry.name}</td><td>${entry.xp}</td><td>${entry.bestScore}</td>`;
+    leaderboardBody.appendChild(tr);
+  });
 }
 
 function setStatus(text) {
@@ -448,6 +483,114 @@ function handleSkip() {
     return;
   }
   socket.emit("skip_turn", currentRoomId);
+}
+
+function simulatePlace(b, pieceDefIdx, row, col) {
+  const piece = PIECE_DEFS[pieceDefIdx];
+  const nb = b.map(r => [...r]);
+  for (const [dr, dc] of piece.cells) {
+    nb[row + dr][col + dc] = "preview";
+  }
+  return nb;
+}
+
+function countLineClears(b) {
+  let clears = 0;
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    if (b[r].every(c => c !== null)) clears++;
+  }
+  for (let c = 0; c < BOARD_SIZE; c++) {
+    let full = true;
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      if (b[r][c] === null) { full = false; break; }
+    }
+    if (full) clears++;
+  }
+  return clears;
+}
+
+function rowColCloseness(b) {
+  let score = 0;
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    let filled = 0;
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      if (b[r][c] !== null) filled++;
+    }
+    if (filled >= BOARD_SIZE - 2) score += filled * filled;
+    else if (filled >= BOARD_SIZE - 3) score += filled;
+  }
+  for (let c = 0; c < BOARD_SIZE; c++) {
+    let filled = 0;
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      if (b[r][c] !== null) filled++;
+    }
+    if (filled >= BOARD_SIZE - 2) score += filled * filled;
+    else if (filled >= BOARD_SIZE - 3) score += filled;
+  }
+  return score;
+}
+
+function evaluateMove(pieceDefIdx, row, col) {
+  const nb = simulatePlace(board, pieceDefIdx, row, col);
+  const clears = countLineClears(nb);
+  const closeness = rowColCloseness(nb);
+  return clears * 1000 + closeness;
+}
+
+function autoPlayStep() {
+  if (!gameStarted || gameOver || currentTurn !== myNumber) return;
+
+  if (!canAnyPieceFit(board, currentPieces)) {
+    socket.emit("skip_turn", currentRoomId);
+    return;
+  }
+
+  let best = null;
+  let bestScore = -Infinity;
+
+  for (const pieceDefIdx of currentPieces) {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (!canPlacePiece(board, pieceDefIdx, r, c)) continue;
+        const s = evaluateMove(pieceDefIdx, r, c);
+        if (s > bestScore) {
+          bestScore = s;
+          best = { pieceDefIdx, row: r, col: c };
+        }
+      }
+    }
+  }
+
+  if (best) {
+    selectedPieceIdx = currentPieces.indexOf(best.pieceDefIdx);
+    render();
+    socket.emit("place_piece", {
+      roomId: currentRoomId,
+      pieceDefIdx: best.pieceDefIdx,
+      row: best.row,
+      col: best.col,
+    });
+  }
+}
+
+function toggleAutoPlay() {
+  if (autoPlayInterval) {
+    clearInterval(autoPlayInterval);
+    autoPlayInterval = null;
+    autoPlayBtn.textContent = "Auto Play (Testing)";
+    socket.emit("set_auto_play", false);
+    setStatus("Auto-play stopped.");
+  } else {
+    autoPlayInterval = setInterval(autoPlayStep, 800);
+    autoPlayBtn.textContent = "Stop Auto Play";
+    socket.emit("set_auto_play", true);
+    setStatus("Auto-play started! (XP disabled)");
+  }
+}
+
+if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+  autoPlayBtn.style.display = "inline-block";
+  autoPlayBtn.addEventListener("click", toggleAutoPlay);
 }
 
 init();

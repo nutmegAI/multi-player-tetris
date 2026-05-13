@@ -3,6 +3,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
 const roomManager = require("./roomManager");
+const playerStore = require("./playerStore");
 const {
   canPlacePiece,
   placePieceOnBoard,
@@ -21,6 +22,12 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "client", "index.html"));
 });
 
+const autoPlaySockets = new Set();
+
+function isAutoPlayRoom(room) {
+  return room.players.some((id) => autoPlaySockets.has(id));
+}
+
 function sendGameState(roomId) {
   const room = roomManager.getRoom(roomId);
   if (!room) return;
@@ -29,22 +36,35 @@ function sendGameState(roomId) {
     pieces: room.currentPieces,
     currentTurn: room.currentTurn,
     score: room.score,
+    playerNames: room.playerNames,
   });
+}
+
+function sendLeaderboard(socket) {
+  socket.emit("leaderboard", playerStore.getLeaderboard());
+}
+
+function sendPlayerXP(socket, playerName) {
+  const player = playerStore.getPlayer(playerName);
+  socket.emit("xp_update", { xp: player.xp, highScores: player.highScores });
 }
 
 io.on("connection", (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
+  sendLeaderboard(socket);
+
   socket.on("join_room", (data) => {
     const roomId = typeof data === "string" ? data : data.roomId;
     const isSolo = typeof data === "object" ? !!data.isSolo : false;
+    const playerName = (typeof data === "object" && data.playerName) || "Anonymous";
 
     if (!roomId || typeof roomId !== "string") {
       socket.emit("room_error", "Invalid room ID");
       return;
     }
 
-    const result = roomManager.joinRoom(roomId, socket.id, isSolo);
+    const result = roomManager.joinRoom(roomId, socket.id, isSolo, playerName);
 
     if (!result.success) {
       socket.emit("room_error", result.reason);
@@ -58,7 +78,10 @@ io.on("connection", (socket) => {
       playerNumber: result.playerNumber,
       playerCount: result.playerCount,
       isSolo: result.isSolo,
+      playerName,
     });
+
+    sendPlayerXP(socket, playerName);
 
     if (!isSolo) {
       socket.to(roomId).emit("opponent_joined", {
@@ -112,11 +135,22 @@ io.on("connection", (socket) => {
         rows: linesInfo.rowsToClear,
         cols: linesInfo.colsToClear,
       });
+      if (!isAutoPlayRoom(room)) {
+        const playerName = roomManager.getPlayerName(socket.id);
+        const xpResult = playerStore.addXP(playerName, linesCleared);
+        socket.emit("xp_update", { xp: xpResult.totalXP, xpGained: xpResult.xpGained });
+        sendLeaderboard(socket);
+      }
     }
 
     if (!canAnyPieceFit(room.board, room.currentPieces)) {
       room.state = "gameover";
       io.to(roomId).emit("game_over", { score: room.score, reason: "No valid moves remaining" });
+      if (!isAutoPlayRoom(room)) {
+        const playerName = roomManager.getPlayerName(socket.id);
+        playerStore.recordScore(playerName, room.score);
+        io.to(roomId).emit("leaderboard", playerStore.getLeaderboard());
+      }
     }
   });
 
@@ -131,6 +165,11 @@ io.on("connection", (socket) => {
     if (room.isSolo) {
       room.state = "gameover";
       io.to(roomId).emit("game_over", { score: room.score, reason: "No valid moves remaining" });
+      if (!isAutoPlayRoom(room)) {
+        const playerName = roomManager.getPlayerName(socket.id);
+        playerStore.recordScore(playerName, room.score);
+        io.to(roomId).emit("leaderboard", playerStore.getLeaderboard());
+      }
       return;
     }
 
@@ -139,6 +178,10 @@ io.on("connection", (socket) => {
     if (room.consecutiveSkips >= 2) {
       room.state = "gameover";
       io.to(roomId).emit("game_over", { score: room.score, reason: "Both players skipped" });
+      if (!isAutoPlayRoom(room)) {
+        room.playerNames.forEach((name) => playerStore.recordScore(name, room.score));
+        io.to(roomId).emit("leaderboard", playerStore.getLeaderboard());
+      }
       return;
     }
 
@@ -147,8 +190,14 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("opponent_skipped");
   });
 
+  socket.on("set_auto_play", (enabled) => {
+    if (enabled) autoPlaySockets.add(socket.id);
+    else autoPlaySockets.delete(socket.id);
+  });
+
   socket.on("disconnect", () => {
     console.log(`Player disconnected: ${socket.id}`);
+    autoPlaySockets.delete(socket.id);
     const result = roomManager.leaveRoom(socket.id);
     if (!result) return;
     if (!result.empty) {

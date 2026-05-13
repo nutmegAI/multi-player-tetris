@@ -4,11 +4,13 @@ const MAX_PLAYERS_PER_ROOM = 2;
 
 const rooms = {};
 const playerRoomMap = {};
+const playerNames = {};
 
-function joinRoom(roomId, socketId, isSolo = false) {
+function joinRoom(roomId, socketId, isSolo = false, playerName = "Anonymous") {
   if (!rooms[roomId]) {
     rooms[roomId] = {
       players: [],
+      playerNames: [],
       state: "waiting",
       currentTurn: 0,
       currentPieces: [],
@@ -37,6 +39,8 @@ function joinRoom(roomId, socketId, isSolo = false) {
 
   room.isSolo = isSolo;
   room.players.push(socketId);
+  room.playerNames.push(playerName);
+  playerNames[socketId] = playerName;
   playerRoomMap[socketId] = roomId;
 
   const ready = isSolo || room.players.length === MAX_PLAYERS_PER_ROOM;
@@ -68,7 +72,10 @@ function leaveRoom(socketId) {
     return null;
   }
 
+  const playerIdx = room.players.indexOf(socketId);
   room.players = room.players.filter((id) => id !== socketId);
+  if (playerIdx !== -1) room.playerNames.splice(playerIdx, 1);
+  delete playerNames[socketId];
   delete playerRoomMap[socketId];
 
   if (room.players.length === 0) {
@@ -82,6 +89,10 @@ function leaveRoom(socketId) {
 
 function getRoom(roomId) {
   return rooms[roomId] || null;
+}
+
+function getPlayerName(socketId) {
+  return playerNames[socketId] || "Anonymous";
 }
 
 function getPlayerNumber(socketId) {
@@ -120,6 +131,7 @@ module.exports = {
   joinRoom,
   leaveRoom,
   getRoom,
+  getPlayerName,
   getPlayerNumber,
   advanceTurn,
   removePieceFromSet,
